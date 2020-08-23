@@ -39,6 +39,7 @@ def get_company_info(name_list):
     chrome = webdriver.Chrome('./chromedriver')
     # , chrome_options=options)
     companies = dict() 
+    fail = list()
     for name in name_list:
         chrome.get("https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do")
         # enter the name
@@ -49,24 +50,40 @@ def get_company_info(name_list):
         start_search_btn = chrome.find_element_by_id("qryBtn")
         start_search_btn.click()
         time.sleep(random.uniform(2, 4))
-        # click the first result
+        # click the 'right' result
         try:
-            first_result_elem = chrome.find_element_by_xpath("//div[@class='panel panel-default'][1]/div[@class='panel-heading companyName']/a[@class='hover']")
-            first_result_elem.click()
+            soup = BeautifulSoup(chrome.page_source)
+            # get the number of results
+            results = soup.find_all('div', class_='panel-heading companyName')
+            n_result = len(results)
+            # check every results by order
+            for n in range(n_result):
+                result_name = results[n].text
+                result_info = results[n].find_next_sibling('div').text.strip()
+                if (result_name == name) & ('解散' not in result_info):            
+                    result_elem = chrome.find_element_by_xpath("//div[@class='panel panel-default']["+str(n+1)+"]/div[@class='panel-heading companyName']/a[@class='hover']")
+                    result_elem.click()
+                    print(n) ## 不知道為什麼沒有這行就抓不到統一...
+                    break
         # get the html text from this company's info page
             htmltext = chrome.page_source
             company_info = get_company_info_from_url(htmltext)
             companies[name] = company_info
         except:
             companies[name] = [np.nan, np.nan, np.nan, np.nan, np.nan]
+            fail.append(name)
     chrome.close()
-    return companies
+    return companies, fail
 
 company_name_list = ['統一有限公司', '鴻海精密工業股份有限公司', '大立光電股份有限公司', '台灣積體電路製造股份有限公司', '中國信託商業銀行股份有限公司']
-company_info_df = pd.DataFrame.from_dict(get_company_info(company_name_list), orient='index')
+companies_dict, fail = get_company_info(company_name_list)
+company_info_df = pd.DataFrame.from_dict(companies_dict, orient='index')
 company_info_df.columns = ['name', 'address', 'tax_id', 'capital', 'paid_in_cap']
 
 company_info_df.to_csv('output/company_info_df.csv', encoding='utf_8_sig')
 
+if len(fail) != 0:
+    fail_df  = pd.DataFrame(fail)
+    fail_df.to_csv('output/fail.csv', encoding='utf_8_sig')
 
 
